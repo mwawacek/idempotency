@@ -172,6 +172,23 @@ describe('IdempotencyInterceptor', () => {
       expect(runs).toBe(3);
     });
 
+    it('reads the default transport header as the transport kept it: as named by the header option, then lower-cased', async () => {
+      const kafka = (headers: Record<string, string>) =>
+        message({ amount: 1 }, 'charge', { getMessage: () => ({ headers }) });
+
+      await run(kafka({ 'Idempotency-Key': 'k1' }));
+      await run(kafka({ 'Idempotency-Key': 'k1' }));
+      await run(kafka({ 'idempotency-key': 'k2' }));
+      expect(runs).toBe(2);
+      expect(store.peek('k1:Consumers.charge')?.state).toBe('completed');
+      expect(store.peek('k2:Consumers.charge')?.state).toBe('completed');
+
+      await moduleRef.close();
+      await boot({ header: 'X-Request-Key' });
+      await run(kafka({ 'X-Request-Key': 'k3' }));
+      expect(store.peek('k3:Consumers.charge')?.state).toBe('completed');
+    });
+
     it('reads the key with a keyFrom function, which may be async', async () => {
       await run(message({ orderId: 7 }, 'ship'));
       await run(message({ orderId: 7 }, 'ship'));
