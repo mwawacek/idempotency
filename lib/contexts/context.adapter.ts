@@ -141,7 +141,14 @@ export function captureHttpOrUnknownError(
     if (!opts.storeIf(status, error)) {
       return null;
     }
-    return { status, headers: {}, body: jsonClone(exception.getResponse()), error: 'http' };
+    return {
+      status,
+      headers: {},
+      body: jsonClone(exception.getResponse()),
+      error: 'http',
+      // Nest's filter adds it to a string body, and the app's filters may read it.
+      ...(exception.errorCode !== undefined && { errorCode: exception.errorCode }),
+    };
   }
 
   if (!opts.storeIf(500, error)) {
@@ -198,7 +205,11 @@ function clientErrorException(error: unknown): HttpException | undefined {
 }
 
 export function rebuildHttpException(stored: IdempotencyStoredResponse): HttpException {
-  return new HttpException(stored.body as string | object, stored.status);
+  return new HttpException(
+    stored.body as string | object,
+    stored.status,
+    stored.errorCode === undefined ? undefined : { errorCode: stored.errorCode },
+  );
 }
 
 /** A successful GraphQL or RPC result, as a 200. */

@@ -10,6 +10,7 @@ import {
   Header,
   Headers,
   HttpCode,
+  HttpException,
   Module,
   RequestMethod,
   type MiddlewareConsumer,
@@ -99,6 +100,13 @@ class OrdersController {
   reject() {
     hit('reject');
     throw new BadRequestException('Insufficient funds');
+  }
+
+  @Post('reject-with-code')
+  @Idempotent()
+  rejectWithCode() {
+    hit('reject-with-code');
+    throw new HttpException('Insufficient funds', 402, { errorCode: 'INSUFFICIENT_FUNDS' });
   }
 
   /** The body's language comes from the request, as with `@nestjs/i18n`. */
@@ -396,6 +404,18 @@ describe.each(adapters.map((a) => a.name))('Idempotency (%s)', (adapter) => {
     expect(retry.body.message).toBe('Insufficient funds');
     expect(retry.headers['idempotent-replayed']).toBe('true');
     expect(state.calls.reject).toBe(1);
+  });
+
+  it("replays the errorCode of an HttpException, which Nest adds to a string body", async () => {
+    const first = await post('/orders/reject-with-code', 'k1');
+    expect(first.status).toBe(402);
+    expect(first.body).toEqual({ statusCode: 402, message: 'Insufficient funds', errorCode: 'INSUFFICIENT_FUNDS' });
+
+    const retry = await post('/orders/reject-with-code', 'k1');
+    expect(retry.headers['idempotent-replayed']).toBe('true');
+    expect(retry.status).toBe(402);
+    expect(retry.body).toEqual(first.body);
+    expect(state.calls['reject-with-code']).toBe(1);
   });
 
   it("stores another error's 4xx status as Nest's exception for it, and replays that", async () => {
